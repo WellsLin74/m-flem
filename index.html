@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M-FLEM | 損失估算模擬系統</title>
+    <style>
+        /* --- 核心樣式 --- */
+        :root {
+            --marsh-blue-dark: #0f172a;
+            --marsh-blue-light: #1e3a8a;
+            --brand-size: 5rem;
+        }
+
+        body { background-color: #f8fafc; margin: 0; font-family: sans-serif; color: #1e293b; }
+
+        /* 置頂全寬橫幅 */
+        .fixed-header {
+            position: fixed; top: 0; left: 0; width: 100%; z-index: 50;
+            background: linear-gradient(to right, var(--marsh-blue-dark), var(--marsh-blue-light));
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-container {
+            max-width: 1200px; margin: 0 auto; padding: 10px 32px;
+            display: flex; align-items: center; gap: 32px;
+        }
+
+        /* Logo 130px */
+        .brand-logo {
+            height: 130px; width: auto; object-fit: contain; display: block;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
+        }
+
+        /* 標題 1.8rem */
+        .system-title {
+            color: white; font-size: 1.8rem; font-weight: 900;
+            letter-spacing: 0.02em; margin: 0; line-height: 1.2; white-space: nowrap;
+        }
+
+        /* 內容區塊 */
+        .main-content {
+            max-width: 1200px; margin: 0 auto; padding: 190px 16px 48px 16px; 
+            /* 預設隱藏，透過 JS 切換顯示 */
+            display: none; 
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* 顯示狀態 */
+        .active-view { display: block !important; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 通用卡片樣式 */
+        .card { background: white; padding: 24px; border-radius: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; margin-bottom: 24px; }
+        
+        /* --- 輸入視圖樣式 --- */
+        .input-view-container { max-width: 950px; margin: 0 auto; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .input-group label { display: block; font-size: 0.8rem; font-weight: bold; color: #475569; margin-bottom: 6px; text-transform: uppercase; }
+        input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f1f5f9; font-weight: bold; box-sizing: border-box; }
+        input.edit-text { background: #fff; border: 1px dashed #3b82f6; }
+        .btn-submit { width: 100%; background: linear-gradient(to right, #2563eb, #1e40af); color: white; font-weight: bold; padding: 16px; border-radius: 12px; border: none; cursor: pointer; font-size: 1.1rem; margin-top: 10px; transition: 0.2s; }
+        .btn-submit:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* --- 模擬視圖樣式 --- */
+        .control-panel { background: white; padding: 24px; border-radius: 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 15px rgba(0,0,0,0.05); margin-bottom: 24px; }
+        .water-control { background: #f8fafc; padding: 12px 24px; border-radius: 16px; display: flex; align-items: center; gap: 20px; border: 1px solid #e2e8f0; }
+        .simulation-container { position: relative; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); margin-bottom: 32px; }
+        .flood-overlay { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(59, 130, 246, 0.2); backdrop-filter: blur(3px); border-top: 4px solid rgba(59, 130, 246, 0.5); z-index: 10; transition: height 0.4s ease-out; }
+        .stats-area { width: 100%; }
+        .loss-card { background: #0f172a; padding: 40px; border-radius: 24px; color: white; border-bottom: 8px solid #2563eb; text-align: center; }
+        
+        /* 表格通用 */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: #1e293b; color: white; padding: 12px; font-size: 0.75rem; text-align: left; }
+        td { padding: 8px; border-bottom: 1px solid #f1f5f9; }
+        input[type=range] { width: 180px; cursor: pointer; }
+
+        /* 返回連結 */
+        .back-link { text-align: center; margin-top: 32px; }
+        .back-link a { color: #64748b; font-weight: bold; text-decoration: underline; cursor: pointer; }
+        .back-link a:hover { color: #1e3a8a; }
+    </style>
+</head>
+<body>
+    <header class="fixed-header">
+        <div class="header-container">
+            <img src="m-flem-new-logo.png" alt="Logo" class="brand-logo">
+            <h1 class="system-title">Marsh Financial Loss Estimation Model</h1>
+        </div>
+    </header>
+
+    <main id="view-input" class="main-content input-view-container active-view">
+        <div class="card" style="border-left: 6px solid #2563eb;">
+            <h2 style="margin:0">基礎資料維護</h2>
+            <p style="color:#64748b; font-size: 0.9rem;">請手動維護樓層名稱、高程及資產價值。</p>
+        </div>
+
+        <form id="data-form">
+            <div class="card form-grid">
+                <div class="input-group">
+                    <label>工廠編號 (Fab ID)</label>
+                    <input type="text" id="fab-id" required placeholder="例如: Fab 14 P1">
+                </div>
+                <div class="input-group">
+                    <label>資料日期</label>
+                    <input type="date" id="input-date" required>
+                </div>
+            </div>
+
+            <div class="card" style="padding:0; overflow:hidden">
+                <table id="input-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">樓層名稱 (可修改)</th>
+                            <th style="width: 15%;">高程 EL (m)</th>
+                            <th>Building (M)</th>
+                            <th>Tools (M)</th>
+                            <th>Facility (M)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><input type="text" id="f1-name" class="edit-text" value="Clean Subfab"></td>
+                            <td><input type="number" step="0.01" id="f1-el" class="edit-text" value="12.6"></td>
+                            <td><input type="number" step="0.01" id="f1-b" value="450.00"></td>
+                            <td><input type="number" step="0.01" id="f1-t" value="15000.00"></td>
+                            <td><input type="number" step="0.01" id="f1-f" value="800.00"></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" id="f2-name" class="edit-text" value="Utility Subfab"></td>
+                            <td><input type="number" step="0.01" id="f2-el" class="edit-text" value="7.28"></td>
+                            <td><input type="number" step="0.01" id="f2-b" value="497.98"></td>
+                            <td><input type="number" step="0.01" id="f2-t" value="10287.84"></td>
+                            <td><input type="number" step="0.01" id="f2-f" value="655.93"></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" id="f3-name" class="edit-text" value="FAC"></td>
+                            <td><input type="number" step="0.01" id="f3-el" class="edit-text" value="1.1"></td>
+                            <td><input type="number" step="0.01" id="f3-b" value="672.69"></td>
+                            <td><input type="number" step="0.01" id="f3-t" value="500.00"></td>
+                            <td><input type="number" step="0.01" id="f3-f" value="655.93"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="btn-submit">儲存資料並開啟模擬 →</button>
+        </form>
+    </main>
+
+    <main id="view-simulation" class="main-content">
+        <div class="control-panel">
+            <div>
+                <span id="display-fab-id" style="font-size: 1.25rem; font-weight: 900; text-transform: uppercase;">Fab ID</span>
+                <div style="color: #64748b; font-weight: bold; margin-top: 4px;" id="display-date">資料日期</div>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: center;">
+                <div class="water-control">
+                    <div style="text-align: right">
+                        <small style="color:#94a3b8; font-weight:bold; display:block">情境水位設定</small>
+                        <strong id="display-water-level" style="font-size: 2rem; color: #2563eb; line-height: 1;">0.38</strong><small style="color:#3b82f6; font-weight:bold">m</small>
+                    </div>
+                    <input type="range" id="water-slider" min="0" max="3" step="0.1" value="0.38">
+                </div>
+            </div>
+        </div>
+
+        <div class="simulation-container">
+            <div id="flood-overlay" class="flood-overlay">
+                <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); background: #2563eb; color: white; padding: 4px 16px; border-radius: 99px; font-size: 0.75rem; font-weight: bold;">
+                    SURFACE: <span id="overlay-level-text">0.38</span>m
+                </div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="padding: 12px; width: 25%;">樓層 (高程)</th>
+                        <th style="padding: 12px; text-align: center; width: 15%;">指標</th>
+                        <th>Building (M)</th>
+                        <th>Tools (M)</th>
+                        <th>Facility (M)</th>
+                    </tr>
+                </thead>
+                <tbody id="sim-table-body"></tbody>
+            </table>
+        </div>
+
+        <div class="stats-area">
+            <div class="loss-card">
+                <small style="color:#94a3b8; text-transform:uppercase; font-weight:bold; letter-spacing: 0.1em;">Estimated Total PD Loss</small>
+                <div style="font-size: 4rem; font-weight: 900; color: #60a5fa; margin-top: 10px;">
+                    $ <span id="total-loss">0</span> <small style="font-size: 1.5rem; color: #64748b; font-weight: normal;">M</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="back-link">
+            <a onclick="switchView('input')">← 返回修改基礎資料</a>
+        </div>
+    </main>
+
+    <script>
+        // 初始化全域資料物件
+        let appData = { 
+            fabId: "Default Fab", 
+            date: new Date().toISOString().split('T')[0], 
+            floors: [] 
+        };
+
+        // DOM 元素參考
+        const viewInput = document.getElementById('view-input');
+        const viewSimulation = document.getElementById('view-simulation');
+        const slider = document.getElementById('water-slider');
+
+        // 頁面載入時初始化
+        window.onload = function() {
+            document.getElementById('input-date').valueAsDate = new Date();
+            
+            // 嘗試讀取舊資料 (Optional)
+            const saved = localStorage.getItem('mflem_base_data');
+            if (saved) {
+                appData = JSON.parse(saved);
+                populateInputForm(appData);
+            }
+        };
+
+        // 切換視圖功能
+        function switchView(viewName) {
+            if (viewName === 'simulation') {
+                viewInput.classList.remove('active-view');
+                viewSimulation.classList.add('active-view');
+                // 進入模擬時，重置並計算一次
+                initSimulationView();
+            } else {
+                viewSimulation.classList.remove('active-view');
+                viewInput.classList.add('active-view');
+            }
+            // 滾動回頂部
+            window.scrollTo(0, 0);
+        }
+
+        // 將資料填回表單 (若有儲存紀錄)
+        function populateInputForm(data) {
+            document.getElementById('fab-id').value = data.fabId;
+            document.getElementById('input-date').value = data.date;
+            if (data.floors && data.floors.length >= 3) {
+                // 僅示範填入前三層，實際可動態生成
+                const ids = ['f1', 'f2', 'f3'];
+                data.floors.forEach((f, i) => {
+                    if (i < 3) {
+                        document.getElementById(`${ids[i]}-name`).value = f.name;
+                        document.getElementById(`${ids[i]}-el`).value = f.el;
+                        document.getElementById(`${ids[i]}-b`).value = f.assets.b;
+                        document.getElementById(`${ids[i]}-t`).value = f.assets.t;
+                        document.getElementById(`${ids[i]}-f`).value = f.assets.f;
+                    }
+                });
+            }
+        }
+
+        // 表單提交：儲存資料並切換至模擬
+        document.getElementById('data-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            // 蒐集表單資料
+            appData.fabId = document.getElementById('fab-id').value;
+            appData.date = document.getElementById('input-date').value;
+            appData.floors = [
+                { 
+                    name: document.getElementById('f1-name').value, 
+                    el: parseFloat(document.getElementById('f1-el').value), 
+                    assets: { 
+                        b: parseFloat(document.getElementById('f1-b').value), 
+                        t: parseFloat(document.getElementById('f1-t').value), 
+                        f: parseFloat(document.getElementById('f1-f').value) 
+                    } 
+                },
+                { 
+                    name: document.getElementById('f2-name').value, 
+                    el: parseFloat(document.getElementById('f2-el').value), 
+                    assets: { 
+                        b: parseFloat(document.getElementById('f2-b').value), 
+                        t: parseFloat(document.getElementById('f2-t').value), 
+                        f: parseFloat(document.getElementById('f2-f').value) 
+                    } 
+                },
+                { 
+                    name: document.getElementById('f3-name').value, 
+                    el: parseFloat(document.getElementById('f3-el').value), 
+                    assets: { 
+                        b: parseFloat(document.getElementById('f3-b').value), 
+                        t: parseFloat(document.getElementById('f3-t').value), 
+                        f: parseFloat(document.getElementById('f3-f').value) 
+                    } 
+                }
+            ];
+
+            // 儲存到 localStorage (防止重新整理後資料遺失)
+            localStorage.setItem('mflem_base_data', JSON.stringify(appData));
+
+            // 切換視圖
+            switchView('simulation');
+        });
+
+        // 初始化模擬畫面
+        function initSimulationView() {
+            document.getElementById('display-fab-id').innerText = appData.fabId;
+            document.getElementById('display-date').innerText = "資料日期: " + appData.date;
+            updateSimulation(parseFloat(slider.value));
+        }
+
+        // 核心計算與渲染邏輯
+        function updateSimulation(waterLevel) {
+            const displayLevel = document.getElementById('display-water-level');
+            const overlayLevelText = document.getElementById('overlay-level-text');
+            const floodOverlay = document.getElementById('flood-overlay');
+            const tableBody = document.getElementById('sim-table-body');
+            const totalLossDisplay = document.getElementById('total-loss');
+
+            displayLevel.innerText = waterLevel.toFixed(2);
+            overlayLevelText.innerText = waterLevel.toFixed(2);
+            floodOverlay.style.height = `${(waterLevel / 3) * 100}%`; // 3m Max
+
+            let currentTotalLoss = 0;
+            let rowsHtml = '';
+
+            appData.floors.forEach(floor => {
+                // 淹水深度計算 logic: 水位 - (該層高程 - 基準高程7.28) 
+                // 注意：這裡沿用您原本邏輯，假設 Utility Subfab (7.28m) 為相對基準 0
+                const depthAtFloor = Math.max(0, waterLevel - (floor.el - 7.28));
+                
+                // 損害比例：每 0.5m 淹水 = 100% 損失
+                const ratio = depthAtFloor > 0 ? Math.min(100, (depthAtFloor / 0.5) * 100) : 0;
+
+                const bL = Math.round(floor.assets.b * (ratio / 100));
+                const tL = Math.round(floor.assets.t * (ratio / 100));
+                const fL = Math.round(floor.assets.f * (ratio / 100));
+                
+                currentTotalLoss += (bL + tL + fL);
+
+                rowsHtml += `<tr>
+                    <td style="padding: 12px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #f1f5f9; background: #f8fafc;">
+                        <strong>${floor.name}</strong><br><small style="color:#94a3b8">EL ${floor.el}m</small>
+                    </td>
+                    <td style="text-align:center; font-style:italic; font-size:0.6rem; background:white; border-bottom: 1px solid #f1f5f9; border-right: 1px solid #e2e8f0;">
+                        Ratio %<br>Loss $
+                    </td>
+                    <td style="padding:8px; border-bottom: 1px solid #f1f5f9; border-right: 1px solid #e2e8f0;">
+                        ${ratio.toFixed(1)}%<br><strong>${bL.toLocaleString()}</strong>
+                    </td>
+                    <td style="padding:8px; border-bottom: 1px solid #f1f5f9; border-right: 1px solid #e2e8f0;">
+                        ${ratio.toFixed(1)}%<br><strong>${tL.toLocaleString()}</strong>
+                    </td>
+                    <td style="padding:8px; border-bottom: 1px solid #f1f5f9;">
+                        ${ratio.toFixed(1)}%<br><strong>${fL.toLocaleString()}</strong>
+                    </td>
+                </tr>`;
+            });
+
+            tableBody.innerHTML = rowsHtml;
+            totalLossDisplay.innerText = currentTotalLoss.toLocaleString();
+        }
+
+        // 滑桿監聽
+        slider.oninput = (e) => updateSimulation(parseFloat(e.target.value));
+    </script>
+</body>
+</html>
